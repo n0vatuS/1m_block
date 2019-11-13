@@ -14,6 +14,8 @@
 #define IP_ADDR_LEN 	4
 #define TYPE_IPV4  0x0800
 #define PTC_TCP    	6
+#define HOST_SIZE 1000000
+#define HOST_LEN      100
 
 typedef struct eth_hdr {
 	uint8_t dst_addr[HW_ADDR_LEN];
@@ -50,13 +52,13 @@ typedef struct header {
 	TCP tcp_hdr;
 }header;
 
-char * host_name;
-
 void usage(){
-  printf("syntax : netfilter_block <host>\n");
-  printf("sample : netfilter_block test.gilgil.net\n");
+  printf("syntax : 1m_block top-1m.csv\n");
+  printf("sample : 1m_block top-1m.csv\n");
   exit(1);
 }
+
+char host_name[HOST_SIZE][HOST_LEN];
 
 void dump(unsigned char * buf, int size) {
 	int i;
@@ -82,8 +84,9 @@ bool check_host(unsigned char * packet) {
 	char * host = strstr((char *)packet, str);
     if(host == NULL)
         return false;
-    if(strstr((char *)host, host_name) == host+strlen(str) && host[strlen(host_name)+strlen(str)] == 0x0d)
-        return true;
+    for(int i = 0;i < HOST_SIZE; i++)
+	if(strstr((char *)host, host_name[i]) == host+strlen(str) && host[strlen(host_name[i])+strlen(str)] == 0x0d)
+        	return true;
     return false;
 }
 
@@ -178,7 +181,19 @@ int main(int argc, char **argv)
 		usage();
 	}
 
-	host_name = argv[1];
+	FILE* fp = fopen(argv[1], "rb" );
+	for(int i = 0; i < HOST_SIZE; i++) {
+		char buf[HOST_LEN];
+		fgets(buf, HOST_LEN, fp );
+		for(int j = 0; j < HOST_LEN; j++) {
+			if(buf[j] == ',') {
+				strncpy(host_name[i],buf+j+1,strlen(buf)-j-1);
+				break;
+			}
+		}
+	}
+	fclose( fp );
+	printf("[+] Read Success!\n");
 
 	printf("opening library handle\n");
 	h = nfq_open();
