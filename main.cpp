@@ -7,6 +7,9 @@
 #include <linux/netfilter.h>		/* for NF_ACCEPT */
 #include <errno.h>
 #include <string>
+#include <iostream>
+#include <fstream>
+#include <unordered_set>
 
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
@@ -16,6 +19,8 @@
 #define PTC_TCP    	6
 #define HOST_SIZE 1000000
 #define HOST_LEN      100
+
+using namespace std;
 
 typedef struct eth_hdr {
 	uint8_t dst_addr[HW_ADDR_LEN];
@@ -58,7 +63,7 @@ void usage(){
   exit(1);
 }
 
-char host_name[HOST_SIZE][HOST_LEN];
+unordered_set<string> host_name;
 
 void dump(unsigned char * buf, int size) {
 	int i;
@@ -82,12 +87,18 @@ bool compare_method(unsigned char * packet) {
 bool check_host(unsigned char * packet) {
 	const char * str = "Host: ";
 	char * host = strstr((char *)packet, str);
-    if(host == NULL)
-        return false;
-    for(int i = 0;i < HOST_SIZE; i++)
-	if(strstr((char *)host, host_name[i]) == host+strlen(str) && host[strlen(host_name[i])+strlen(str)] == 0x0d)
-        	return true;
-    return false;
+	char * start = host + 6;
+	string pkt_host = "";
+   	if(host == NULL)
+        	return false;
+	for(int j = 0; j < HOST_LEN; j++) {
+		pkt_host += start[j];
+		if(start[j+1] == 0x0d && start[j+2] == 0x0a)			
+			break;
+	}
+	if(host_name.find(pkt_host) != host_name.end())
+		return true;
+    	return false;
 }
 
 /* returns packet id */
@@ -149,7 +160,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	      struct nfq_data *nfa, void *data)
 {
 	u_int32_t id = print_pkt(nfa);
-	printf("entering callback\n");
+	//printf("entering callback\n");
 
 	unsigned char * packet;
 	int ret = nfq_get_payload(nfa, &packet);
@@ -181,18 +192,15 @@ int main(int argc, char **argv)
 		usage();
 	}
 
-	FILE* fp = fopen(argv[1], "rb" );
-	for(int i = 0; i < HOST_SIZE; i++) {
-		char buf[HOST_LEN];
-		fgets(buf, HOST_LEN, fp );
-		for(int j = 0; j < HOST_LEN; j++) {
-			if(buf[j] == ',') {
-				strncpy(host_name[i],buf+j+1,strlen(buf)-j-1);
-				break;
-			}
-		}
+	ifstream ifs(argv[1]);
+	for(int i = 0; i < HOST_LEN; i++) {
+		string buf;
+    		getline(ifs, buf);
+		buf = buf.substr(buf.find(",")+1);
+		host_name.insert(buf);
 	}
-	fclose( fp );
+    	ifs.close();
+
 	printf("[+] Read Success!\n");
 
 	printf("opening library handle\n");
